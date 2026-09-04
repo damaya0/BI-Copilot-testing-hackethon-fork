@@ -3,6 +3,23 @@ import ballerina/time;
 
 listener http:Listener maintenanceWindowListener = new (servicePort);
 
+service /system on maintenanceWindowListener {
+
+    # Reports the IANA time zone database (tzdata) version the service is currently running
+    # against, together with the underlying Java runtime version and vendor supplying it.
+    # Ballerina's `time` module has no tzdata of its own - it delegates to the JVM - so this
+    # is the version actually applied to every local-time-to-UTC conversion the service makes.
+    #
+    # + return - the zone data version info, or an internal server error if it could not be read
+    resource function get zone\-data\-version() returns ZoneDataInfo|http:InternalServerError {
+        ZoneDataInfo|error zoneDataInfo = getZoneDataInfo();
+        if zoneDataInfo is error {
+            return <http:InternalServerError>{body: "Unable to determine zone data version: " + zoneDataInfo.message()};
+        }
+        return zoneDataInfo;
+    }
+}
+
 service /maintenance\-windows on maintenanceWindowListener {
 
     # Registers a maintenance window using the site operations team's own local wall-clock time.

@@ -1,0 +1,3 @@
+Time:prompt-1:v5
+
+Legal has come back on the customer-facing calendar. Apparently at least one of the countries we operate in has changed its daylight-saving or standard-offset rules in the last few years, and nobody here knows whether the timezone data bundled with the runtime we ship actually has that change in it. Find out what has actually changed recently, where the runtime's zone data comes from and how current it is, and tell me whether any of our three sites are affected. If that data can go stale relative to the real world, add whatever we need so an operator can see which zone data version the service is running against.
