@@ -62,10 +62,76 @@ public type MaintenanceWindowView record {|
     string utcEnd;
 |};
 
-# A maintenance window enriched with chronological ordering and collision
-# information, as returned to the change calendar.
-public type ScheduledMaintenanceWindow record {|
+# The day of the week a standing maintenance slot runs on.
+public enum Weekday {
+    SUNDAY = "SUNDAY",
+    MONDAY = "MONDAY",
+    TUESDAY = "TUESDAY",
+    WEDNESDAY = "WEDNESDAY",
+    THURSDAY = "THURSDAY",
+    FRIDAY = "FRIDAY",
+    SATURDAY = "SATURDAY"
+}
+
+# Maps each weekday to its `time:DayOfWeek` numeric value (0 = Sunday .. 6 = Saturday).
+public final map<int> & readonly weekdayNumbers = {
+    [SUNDAY]: 0,
+    [MONDAY]: 1,
+    [TUESDAY]: 2,
+    [WEDNESDAY]: 3,
+    [THURSDAY]: 4,
+    [FRIDAY]: 5,
+    [SATURDAY]: 6
+};
+
+# Which occurrence of a weekday within the month a standing maintenance slot runs on.
+public enum WeekOfMonth {
+    FIRST = "FIRST",
+    SECOND = "SECOND",
+    THIRD = "THIRD",
+    FOURTH = "FOURTH",
+    LAST = "LAST"
+}
+
+# A wall-clock time of day, with no date attached.
+public type TimeOfDay record {|
+    int hour;
+    int minute;
+|};
+
+# A standing maintenance slot, as a site's operations team would describe it: for
+# example "the last Sunday of every month, 02:00 to 03:00 local". If the end time
+# is not after the start time, the slot is understood to run past midnight and end
+# on the following day.
+public type RecurringWindowInput record {|
+    Site site;
+    string title;
+    WeekOfMonth weekOfMonth;
+    Weekday dayOfWeek;
+    TimeOfDay localStartTime;
+    TimeOfDay localEndTime;
+|};
+
+# A stored standing maintenance slot.
+public type RecurringWindow record {|
     string id;
+    Site site;
+    string title;
+    WeekOfMonth weekOfMonth;
+    Weekday dayOfWeek;
+    TimeOfDay localStartTime;
+    TimeOfDay localEndTime;
+    string timeZone;
+|};
+
+# A single concrete occurrence of a maintenance window within a requested period -
+# either a one-off window or one instance of an expanded standing slot. Keeps the
+# local representation for rendering back to customers, the resolved UTC instants
+# for the global timeline, the actual elapsed duration on that timeline (used to
+# bill contractor call-out hours), and same-site collision information.
+public type MaintenanceOccurrence record {|
+    string id;
+    string? recurringWindowId;
     Site site;
     string title;
     LocalDateTime localStart;
@@ -73,6 +139,7 @@ public type ScheduledMaintenanceWindow record {|
     string timeZone;
     string utcStart;
     string utcEnd;
+    decimal actualDurationMinutes;
     boolean collides;
     string[] collidesWith;
 |};

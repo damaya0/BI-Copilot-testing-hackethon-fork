@@ -36,13 +36,34 @@ function toMaintenanceWindowView(MaintenanceWindow maintenanceWindow) returns Ma
     utcEnd: time:utcToString(maintenanceWindow.utcEnd)
 };
 
-# Maps a stored maintenance window into the calendar view, enriched with collision information.
+# Maps a recurring window input, together with its resolved time zone, into the stored
+# standing maintenance slot representation.
 #
-# + maintenanceWindow - the stored maintenance window
-# + collidingIds - the ids of other windows at the same site that collide with this one
-# + return - the scheduled maintenance window view
-function toScheduledMaintenanceWindow(MaintenanceWindow maintenanceWindow, string[] collidingIds) returns ScheduledMaintenanceWindow => {
+# + recurringWindowInput - the standing slot as submitted by the site's operations team
+# + generatedId - the generated unique id for this standing slot
+# + zoneId - the IANA time zone id of the site
+# + return - the stored standing maintenance slot
+function toRecurringWindow(RecurringWindowInput recurringWindowInput, string generatedId, string zoneId) returns RecurringWindow => {
+    id: generatedId,
+    site: recurringWindowInput.site,
+    title: recurringWindowInput.title,
+    weekOfMonth: recurringWindowInput.weekOfMonth,
+    dayOfWeek: recurringWindowInput.dayOfWeek,
+    localStartTime: recurringWindowInput.localStartTime,
+    localEndTime: recurringWindowInput.localEndTime,
+    timeZone: zoneId
+};
+
+# Maps a maintenance window occurrence (either one-off or an expanded standing slot instance)
+# into the calendar view, enriched with its actual billable duration and collision information.
+#
+# + maintenanceWindow - the maintenance window occurrence
+# + recurringWindowId - the id of the standing slot this occurrence belongs to, or nil for a one-off window
+# + collidingIds - the ids of other occurrences at the same site that collide with this one
+# + return - the maintenance occurrence view
+function toMaintenanceOccurrence(MaintenanceWindow maintenanceWindow, string? recurringWindowId, string[] collidingIds) returns MaintenanceOccurrence => {
     id: maintenanceWindow.id,
+    recurringWindowId,
     site: maintenanceWindow.site,
     title: maintenanceWindow.title,
     localStart: maintenanceWindow.localStart,
@@ -50,6 +71,7 @@ function toScheduledMaintenanceWindow(MaintenanceWindow maintenanceWindow, strin
     timeZone: maintenanceWindow.timeZone,
     utcStart: time:utcToString(maintenanceWindow.utcStart),
     utcEnd: time:utcToString(maintenanceWindow.utcEnd),
+    actualDurationMinutes: actualDurationMinutes(maintenanceWindow),
     collides: collidingIds.length() > 0,
     collidesWith: collidingIds
 };

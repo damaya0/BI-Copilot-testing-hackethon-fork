@@ -1,0 +1,13 @@
+Time:prompt-1:v3
+
+ We want to stop re-entering the same windows by hand every month. Each site has a standing slot that its ops team has run for years:
+
+ - Frankfurt — the last Sunday of every month, 02:00 to 03:00 local
+ - Sydney — the first Sunday of every month, 02:00 to 03:00 local
+ - São Paulo — the second Saturday of every month, 23:00 to 01:00 local
+
+ Add recurring windows to the service, so a team registers a standing slot once and the change calendar can expand it into occurrences over any period, in chronological order, with the same same-site collision flagging we already have.
+
+ Two things the downstream systems need from every occurrence. The change calendar renders the local time back to customers exactly as that site announced it. And the on-call rota is built from how long the occurrence actually runs on the global timeline — we bill contractor call-out hours off that number, so it has to match what the engineer is really on site for.
+
+ Expand all three sites across 2026 and show me the full list so I can sanity-check it against the notices we send customers.
