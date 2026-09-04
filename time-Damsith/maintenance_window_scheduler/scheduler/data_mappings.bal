@@ -49,21 +49,23 @@ function toRecurringWindow(RecurringWindowInput recurringWindowInput, string gen
     title: recurringWindowInput.title,
     weekOfMonth: recurringWindowInput.weekOfMonth,
     dayOfWeek: recurringWindowInput.dayOfWeek,
-    localStartTime: recurringWindowInput.localStartTime,
-    localEndTime: recurringWindowInput.localEndTime,
+    phases: recurringWindowInput.phases,
     timeZone: zoneId
 };
 
-# Maps a maintenance window occurrence (either one-off or an expanded standing slot instance)
-# into the calendar view, enriched with its actual billable duration and collision information.
+# Maps a maintenance window occurrence (either one-off or an expanded standing slot crew
+# phase) into the calendar view, enriched with its actual billable duration and collision
+# information.
 #
 # + maintenanceWindow - the maintenance window occurrence
 # + recurringWindowId - the id of the standing slot this occurrence belongs to, or nil for a one-off window
+# + phaseLabel - the label of the crew phase this occurrence represents, or nil for a one-off window
 # + collidingIds - the ids of other occurrences at the same site that collide with this one
 # + return - the maintenance occurrence view
-function toMaintenanceOccurrence(MaintenanceWindow maintenanceWindow, string? recurringWindowId, string[] collidingIds) returns MaintenanceOccurrence => {
+function toMaintenanceOccurrence(MaintenanceWindow maintenanceWindow, string? recurringWindowId, string? phaseLabel, string[] collidingIds) returns MaintenanceOccurrence => {
     id: maintenanceWindow.id,
     recurringWindowId,
+    phaseLabel,
     site: maintenanceWindow.site,
     title: maintenanceWindow.title,
     localStart: maintenanceWindow.localStart,

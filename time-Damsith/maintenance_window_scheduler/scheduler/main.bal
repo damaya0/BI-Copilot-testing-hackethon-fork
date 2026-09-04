@@ -55,18 +55,22 @@ service /maintenance\-windows on maintenanceWindowListener {
             select candidateWindow;
 
         map<string?> sourceRecurringWindowIds = {};
+        map<string?> sourcePhaseLabels = {};
         MaintenanceWindow[] allOccurrences = [];
         foreach MaintenanceWindow oneOffWindow in oneOffWindows {
             sourceRecurringWindowIds[oneOffWindow.id] = ();
+            sourcePhaseLabels[oneOffWindow.id] = ();
             allOccurrences.push(oneOffWindow);
         }
 
         foreach RecurringWindow recurringWindow in recurringWindowStore {
-            MaintenanceWindow[]|error expandedOccurrences = expandRecurringWindow(recurringWindow, periodStart, periodEnd);
-            if expandedOccurrences is MaintenanceWindow[] {
-                foreach MaintenanceWindow occurrence in expandedOccurrences {
-                    sourceRecurringWindowIds[occurrence.id] = recurringWindow.id;
-                    allOccurrences.push(occurrence);
+            RecurringPhaseOccurrence[]|error expandedPhases = expandRecurringWindow(recurringWindow, periodStart, periodEnd);
+            if expandedPhases is RecurringPhaseOccurrence[] {
+                foreach RecurringPhaseOccurrence phaseOccurrence in expandedPhases {
+                    MaintenanceWindow phaseWindow = phaseOccurrence.phaseWindow;
+                    sourceRecurringWindowIds[phaseWindow.id] = recurringWindow.id;
+                    sourcePhaseLabels[phaseWindow.id] = phaseOccurrence.phaseLabel;
+                    allOccurrences.push(phaseWindow);
                 }
             }
         }
@@ -83,7 +87,8 @@ service /maintenance\-windows on maintenanceWindowListener {
                 where windowsOverlap(currentOccurrence, otherOccurrence)
                 select otherOccurrence.id;
             string? recurringWindowId = sourceRecurringWindowIds[currentOccurrence.id];
-            scheduledOccurrences.push(toMaintenanceOccurrence(currentOccurrence, recurringWindowId, collidingIds));
+            string? phaseLabel = sourcePhaseLabels[currentOccurrence.id];
+            scheduledOccurrences.push(toMaintenanceOccurrence(currentOccurrence, recurringWindowId, phaseLabel, collidingIds));
         }
         return scheduledOccurrences;
     }
@@ -97,13 +102,27 @@ service /recurring\-maintenance\-windows on maintenanceWindowListener {
     # + newRecurringWindow - the standing slot as written down by the site's operations team
     # + return - the stored standing slot, or a bad request if the input is invalid
     resource function post .(RecurringWindowInput newRecurringWindow) returns RecurringWindow|http:BadRequest {
+        if newRecurringWindow.phases.length() == 0 {
+            return <http:BadRequest>{body: "A standing maintenance slot must have at least one crew phase."};
+        }
+
         string zoneId = siteTimeZones.get(newRecurringWindow.site);
         string generatedId = generateRecurringWindowId();
         RecurringWindow storedRecurringWindow = toRecurringWindow(newRecurringWindow, generatedId, zoneId);
 
-        [LocalDateTime, LocalDateTime]|error sampleOccurrence = buildOccurrenceLocalDateTimes(storedRecurringWindow, 2026, 1);
-        if sampleOccurrence is error {
-            return <http:BadRequest>{body: "Invalid recurrence rule: " + sampleOccurrence.message()};
+        foreach RecurringPhase phase in storedRecurringWindow.phases {
+            [LocalDateTime, LocalDateTime]|error samplePhase = buildPhaseLocalDateTimes(storedRecurringWindow, phase, 2026, 1);
+            if samplePhase is error {
+                return <http:BadRequest>{body: "Invalid recurrence rule: " + samplePhase.message()};
+            }
+        }
+
+        MaintenanceWindow[]|error samplePhaseWindows = phaseWindowsForMonth(storedRecurringWindow, 2026, 1);
+        if samplePhaseWindows is error {
+            return <http:BadRequest>{body: "Invalid recurrence rule: " + samplePhaseWindows.message()};
+        }
+        if hasOverlappingPhases(samplePhaseWindows) {
+            return <http:BadRequest>{body: "A standing slot's crew phases must never overlap each other."};
         }
 
         recurringWindowStore[generatedId] = storedRecurringWindow;
@@ -115,5 +134,58 @@ service /recurring\-maintenance\-windows on maintenanceWindowListener {
     # + return - the registered standing slots
     resource function get .() returns RecurringWindow[] {
         return recurringWindowStore.toArray();
+    }
+
+    # Provides the finance reconciliation view for every standing slot occurrence within the
+    # given period: each crew phase alongside the whole slot's own actual duration, so the
+    # phases can be checked against the slot end to end.
+    #
+    # + 'from - the start of the period, as an RFC 3339 UTC timestamp
+    # + to - the end of the period, as an RFC 3339 UTC timestamp
+    # + return - the reconciliation view for each occurrence in chronological order, or a bad request if the period is invalid
+    resource function get reconciliation(string 'from, string to) returns SlotReconciliation[]|http:BadRequest {
+        time:Utc|error periodStart = time:utcFromString('from);
+        time:Utc|error periodEnd = time:utcFromString(to);
+        if periodStart is error {
+            return <http:BadRequest>{body: "Invalid 'from' timestamp: " + periodStart.message()};
+        }
+        if periodEnd is error {
+            return <http:BadRequest>{body: "Invalid 'to' timestamp: " + periodEnd.message()};
+        }
+        if !isChronological(periodStart, periodEnd) {
+            return <http:BadRequest>{body: "The 'to' timestamp must be after the 'from' timestamp."};
+        }
+
+        SlotReconciliation[] reconciliations = [];
+        foreach RecurringWindow recurringWindow in recurringWindowStore {
+            RecurringPhaseOccurrence[]|error expandedPhases = expandRecurringWindow(recurringWindow, periodStart, periodEnd);
+            if expandedPhases is error {
+                continue;
+            }
+
+            map<MaintenanceWindow[]> phasesByOccurrenceGroup = {};
+            foreach RecurringPhaseOccurrence phaseOccurrence in expandedPhases {
+                string groupId = phaseOccurrence.occurrenceGroupId;
+                MaintenanceWindow[]? existingGroup = phasesByOccurrenceGroup[groupId];
+                MaintenanceWindow[] groupPhases = existingGroup is MaintenanceWindow[] ? existingGroup : [];
+                groupPhases.push(phaseOccurrence.phaseWindow);
+                phasesByOccurrenceGroup[groupId] = groupPhases;
+            }
+
+            foreach MaintenanceWindow[] groupPhases in phasesByOccurrenceGroup {
+                SlotReconciliation reconciliation = buildSlotReconciliation(recurringWindow, groupPhases);
+                string[] emptyCollisionList = [];
+                MaintenanceOccurrence[] phaseViews = from MaintenanceWindow phaseWindow in groupPhases
+                    order by phaseWindow.utcStart ascending
+                    select toMaintenanceOccurrence(phaseWindow, recurringWindow.id, phaseWindow.title, emptyCollisionList);
+                reconciliation.phases = phaseViews;
+                reconciliations.push(reconciliation);
+            }
+        }
+
+        SlotReconciliation[] sortedReconciliations = from SlotReconciliation reconciliation in reconciliations
+            order by reconciliation.phases[0].utcStart ascending
+            select reconciliation;
+        return sortedReconciliations;
     }
 }

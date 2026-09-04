@@ -1,0 +1,12 @@
+Time:prompt-1:v4
+
+ Frankfurt and Sydney have outgrown taking a whole site down in one go. From now on both of them run their standing monthly slot as two back-to-back crew phases instead of one block:
+
+ - Phase A — "drain and patch A-side", 02:00 to 02:30 local
+ - Phase B — "drain and patch B-side", 02:30 to 03:00 local
+
+ São Paulo stays as it is, one block 23:00 to 01:00 local.
+
+ Two rules the change calendar has to hold us to. The A-side and B-side phases must never overlap — if they do, the entire site is offline at once, which is the whole reason we're splitting them, so the calendar has to catch it. And each phase is invoiced to a different contractor crew, so finance reconciles them against the slot as a whole: two 30-minute phases have to account for the slot end to end and no more.
+
+ Set the phases up for Frankfurt and Sydney across 2026 and give me the per-phase breakdown with durations, so I can send it to finance and to the two crew leads.

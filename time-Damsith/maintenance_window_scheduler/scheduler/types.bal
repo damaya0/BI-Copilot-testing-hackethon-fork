@@ -99,17 +99,25 @@ public type TimeOfDay record {|
     int minute;
 |};
 
+# One crew phase of a standing maintenance slot, for example "drain and patch A-side,
+# 02:00 to 02:30 local". A slot with a single phase runs as one uninterrupted block; a
+# slot with several phases runs them back-to-back, each invoiced to its own crew. If a
+# phase's end time is not after its start time, that phase is understood to run past
+# midnight and end on the following day.
+public type RecurringPhase record {|
+    string label;
+    TimeOfDay localStartTime;
+    TimeOfDay localEndTime;
+|};
+
 # A standing maintenance slot, as a site's operations team would describe it: for
-# example "the last Sunday of every month, 02:00 to 03:00 local". If the end time
-# is not after the start time, the slot is understood to run past midnight and end
-# on the following day.
+# example "the last Sunday of every month" run as one or more back-to-back crew phases.
 public type RecurringWindowInput record {|
     Site site;
     string title;
     WeekOfMonth weekOfMonth;
     Weekday dayOfWeek;
-    TimeOfDay localStartTime;
-    TimeOfDay localEndTime;
+    RecurringPhase[] phases;
 |};
 
 # A stored standing maintenance slot.
@@ -119,19 +127,19 @@ public type RecurringWindow record {|
     string title;
     WeekOfMonth weekOfMonth;
     Weekday dayOfWeek;
-    TimeOfDay localStartTime;
-    TimeOfDay localEndTime;
+    RecurringPhase[] phases;
     string timeZone;
 |};
 
 # A single concrete occurrence of a maintenance window within a requested period -
-# either a one-off window or one instance of an expanded standing slot. Keeps the
-# local representation for rendering back to customers, the resolved UTC instants
-# for the global timeline, the actual elapsed duration on that timeline (used to
-# bill contractor call-out hours), and same-site collision information.
+# either a one-off window, or one crew phase of one instance of an expanded standing
+# slot. Keeps the local representation for rendering back to customers, the resolved
+# UTC instants for the global timeline, the actual elapsed duration on that timeline
+# (used to bill contractor call-out hours), and same-site collision information.
 public type MaintenanceOccurrence record {|
     string id;
     string? recurringWindowId;
+    string? phaseLabel;
     Site site;
     string title;
     LocalDateTime localStart;
@@ -142,4 +150,17 @@ public type MaintenanceOccurrence record {|
     decimal actualDurationMinutes;
     boolean collides;
     string[] collidesWith;
+|};
+
+# The finance reconciliation view of one occurrence of a standing slot: every crew
+# phase that made up that occurrence, alongside the whole slot's own actual duration
+# on the global timeline, so the phases can be checked against the slot end to end.
+public type SlotReconciliation record {|
+    string recurringWindowId;
+    Site site;
+    string title;
+    MaintenanceOccurrence[] phases;
+    decimal slotDurationMinutes;
+    decimal phaseDurationTotalMinutes;
+    boolean reconciled;
 |};

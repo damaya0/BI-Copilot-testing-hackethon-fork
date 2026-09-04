@@ -145,20 +145,21 @@ function findOccurrenceDay(int year, int month, WeekOfMonth weekOfMonth, Weekday
     return error("Unable to locate a " + dayOfWeek.toString() + " in " + year.toString() + "-" + month.toString());
 }
 
-# Builds the concrete local start and end date-times for one occurrence of a standing
-# maintenance slot in a given year and month. If the slot's end time is not after its
-# start time, the occurrence is understood to run past midnight and end the next day.
+# Builds the concrete local start and end date-times for one crew phase of a standing
+# maintenance slot in a given year and month. If the phase's end time is not after its
+# start time, the phase is understood to run past midnight and end the next day.
 #
 # + recurringWindow - the standing maintenance slot
+# + phase - the crew phase to build
 # + year - the year of the occurrence
 # + month - the month of the occurrence (1-12)
-# + return - the local start and end date-times for this occurrence, or an error if the month has no such occurrence
-function buildOccurrenceLocalDateTimes(RecurringWindow recurringWindow, int year, int month) returns [LocalDateTime, LocalDateTime]|error {
+# + return - the local start and end date-times for this phase, or an error if the month has no such occurrence
+function buildPhaseLocalDateTimes(RecurringWindow recurringWindow, RecurringPhase phase, int year, int month) returns [LocalDateTime, LocalDateTime]|error {
     int occurrenceDay = check findOccurrenceDay(year, month, recurringWindow.weekOfMonth, recurringWindow.dayOfWeek);
-    TimeOfDay startTime = recurringWindow.localStartTime;
-    TimeOfDay endTime = recurringWindow.localEndTime;
+    TimeOfDay startTime = phase.localStartTime;
+    TimeOfDay endTime = phase.localEndTime;
 
-    LocalDateTime occurrenceStart = {
+    LocalDateTime phaseStart = {
         year,
         month,
         day: occurrenceDay,
@@ -177,7 +178,7 @@ function buildOccurrenceLocalDateTimes(RecurringWindow recurringWindow, int year
             hour: endTime.hour,
             minute: endTime.minute
         };
-        return [occurrenceStart, sameDayEnd];
+        return [phaseStart, sameDayEnd];
     }
 
     int nextDay = occurrenceDay + 1;
@@ -198,50 +199,59 @@ function buildOccurrenceLocalDateTimes(RecurringWindow recurringWindow, int year
         hour: endTime.hour,
         minute: endTime.minute
     };
-    return [occurrenceStart, nextDayEnd];
+    return [phaseStart, nextDayEnd];
 }
 
-# Expands a standing maintenance slot into its concrete occurrences that intersect a given period.
+# One expanded crew phase occurrence of a standing maintenance slot, together with the
+# label of the phase and the year/month/occurrence group it belongs to (used to group
+# phases back together for finance reconciliation).
+public type RecurringPhaseOccurrence record {|
+    MaintenanceWindow phaseWindow;
+    string phaseLabel;
+    string occurrenceGroupId;
+|};
+
+# Expands a standing maintenance slot into the concrete crew phase occurrences that
+# intersect a given period.
 #
 # + recurringWindow - the standing maintenance slot
 # + periodStart - the start of the query period
 # + periodEnd - the end of the query period
-# + return - the matching occurrences as maintenance windows, or an error if a conversion fails
-function expandRecurringWindow(RecurringWindow recurringWindow, time:Utc periodStart, time:Utc periodEnd) returns MaintenanceWindow[]|error {
+# + return - the matching phase occurrences, or an error if a conversion fails
+function expandRecurringWindow(RecurringWindow recurringWindow, time:Utc periodStart, time:Utc periodEnd) returns RecurringPhaseOccurrence[]|error {
     time:Utc probeStart = time:utcAddSeconds(periodStart, -31d * 24 * 60 * 60);
     time:Civil probeStartCivil = time:utcToCivil(probeStart);
     time:Civil periodEndCivil = time:utcToCivil(periodEnd);
 
-    MaintenanceWindow[] occurrences = [];
+    RecurringPhaseOccurrence[] phaseOccurrences = [];
     int candidateYear = probeStartCivil.year;
     int candidateMonth = probeStartCivil.month;
 
     while candidateYear < periodEndCivil.year || (candidateYear == periodEndCivil.year && candidateMonth <= periodEndCivil.month) {
-        [LocalDateTime, LocalDateTime]|error occurrenceDateTimes = buildOccurrenceLocalDateTimes(recurringWindow, candidateYear, candidateMonth);
-        if occurrenceDateTimes is [LocalDateTime, LocalDateTime] {
-            [LocalDateTime, LocalDateTime] [occurrenceLocalStart, occurrenceLocalEnd] = occurrenceDateTimes;
-            time:Utc occurrenceUtcStart = check toUtc(recurringWindow.site, occurrenceLocalStart);
-            time:Utc occurrenceUtcEnd = check toUtc(recurringWindow.site, occurrenceLocalEnd);
-            if isWithinPeriod({
-                id: recurringWindow.id,
-                site: recurringWindow.site,
-                title: recurringWindow.title,
-                localStart: occurrenceLocalStart,
-                localEnd: occurrenceLocalEnd,
-                timeZone: recurringWindow.timeZone,
-                utcStart: occurrenceUtcStart,
-                utcEnd: occurrenceUtcEnd
-            }, periodStart, periodEnd) {
-                occurrences.push({
-                    id: recurringWindow.id + "-" + candidateYear.toString() + "-" + candidateMonth.toString(),
+        string occurrenceGroupId = recurringWindow.id + "-" + candidateYear.toString() + "-" + candidateMonth.toString();
+        foreach RecurringPhase phase in recurringWindow.phases {
+            [LocalDateTime, LocalDateTime]|error phaseDateTimes = buildPhaseLocalDateTimes(recurringWindow, phase, candidateYear, candidateMonth);
+            if phaseDateTimes is [LocalDateTime, LocalDateTime] {
+                [LocalDateTime, LocalDateTime] [phaseLocalStart, phaseLocalEnd] = phaseDateTimes;
+                time:Utc phaseUtcStart = check toUtc(recurringWindow.site, phaseLocalStart);
+                time:Utc phaseUtcEnd = check toUtc(recurringWindow.site, phaseLocalEnd);
+                MaintenanceWindow phaseWindow = {
+                    id: occurrenceGroupId + "-" + phase.label,
                     site: recurringWindow.site,
-                    title: recurringWindow.title,
-                    localStart: occurrenceLocalStart,
-                    localEnd: occurrenceLocalEnd,
+                    title: recurringWindow.title + " (" + phase.label + ")",
+                    localStart: phaseLocalStart,
+                    localEnd: phaseLocalEnd,
                     timeZone: recurringWindow.timeZone,
-                    utcStart: occurrenceUtcStart,
-                    utcEnd: occurrenceUtcEnd
-                });
+                    utcStart: phaseUtcStart,
+                    utcEnd: phaseUtcEnd
+                };
+                if isWithinPeriod(phaseWindow, periodStart, periodEnd) {
+                    phaseOccurrences.push({
+                        phaseWindow,
+                        phaseLabel: phase.label,
+                        occurrenceGroupId
+                    });
+                }
             }
         }
 
@@ -251,14 +261,100 @@ function expandRecurringWindow(RecurringWindow recurringWindow, time:Utc periodS
             candidateYear += 1;
         }
     }
-    return occurrences;
+    return phaseOccurrences;
 }
 
 # Computes the actual elapsed duration of a maintenance window on the global timeline, in minutes.
+# A local start and end time that a clock change makes impossible to resolve consistently
+# (for example, a phase that starts and ends within a spring-forward gap) can otherwise
+# produce a nonsensical negative duration; that case is clamped to zero here, since there is
+# no meaningful amount of on-site time to bill, and callers should treat it as needing manual
+# review rather than as a real elapsed duration.
 #
 # + maintenanceWindow - the maintenance window
-# + return - the actual duration in minutes
+# + return - the actual duration in minutes, clamped to zero if it cannot be resolved consistently
 function actualDurationMinutes(MaintenanceWindow maintenanceWindow) returns decimal {
     time:Seconds durationSeconds = time:utcDiffSeconds(maintenanceWindow.utcEnd, maintenanceWindow.utcStart);
-    return durationSeconds / 60;
+    decimal durationMinutes = durationSeconds / 60;
+    if durationMinutes < 0d {
+        return 0;
+    }
+    return durationMinutes;
+}
+
+# Builds the concrete crew phase windows of a standing maintenance slot for a single
+# calendar month, regardless of whether they fall within any particular query period.
+# Used to validate a slot's phases against each other when it is first registered.
+#
+# + recurringWindow - the standing maintenance slot
+# + year - the year to build the phases for
+# + month - the month to build the phases for (1-12)
+# + return - the phase windows for that month, or an error if a conversion fails
+function phaseWindowsForMonth(RecurringWindow recurringWindow, int year, int month) returns MaintenanceWindow[]|error {
+    MaintenanceWindow[] phaseWindows = [];
+    foreach RecurringPhase phase in recurringWindow.phases {
+        [LocalDateTime, LocalDateTime] [phaseLocalStart, phaseLocalEnd] = check buildPhaseLocalDateTimes(recurringWindow, phase, year, month);
+        time:Utc phaseUtcStart = check toUtc(recurringWindow.site, phaseLocalStart);
+        time:Utc phaseUtcEnd = check toUtc(recurringWindow.site, phaseLocalEnd);
+        phaseWindows.push({
+            id: phase.label,
+            site: recurringWindow.site,
+            title: recurringWindow.title + " (" + phase.label + ")",
+            localStart: phaseLocalStart,
+            localEnd: phaseLocalEnd,
+            timeZone: recurringWindow.timeZone,
+            utcStart: phaseUtcStart,
+            utcEnd: phaseUtcEnd
+        });
+    }
+    return phaseWindows;
+}
+
+# Checks whether any two of a standing slot's crew phase windows overlap each other.
+# Phases that are simply back-to-back (one ends exactly when the next starts) do not count.
+#
+# + phaseWindows - the crew phase windows to check
+# + return - true if any two phases overlap
+function hasOverlappingPhases(MaintenanceWindow[] phaseWindows) returns boolean {
+    foreach int firstIndex in int:range(0, phaseWindows.length(), step = 1) {
+        foreach int secondIndex in int:range(firstIndex + 1, phaseWindows.length(), step = 1) {
+            if windowsOverlap(phaseWindows[firstIndex], phaseWindows[secondIndex]) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+# Builds the finance reconciliation view for one occurrence of a standing slot: the
+# whole slot's own actual duration (from the earliest phase start to the latest phase
+# end, on the global timeline) checked against the sum of its individual phase durations.
+#
+# + recurringWindow - the standing maintenance slot the phases belong to
+# + phasesInOccurrence - the crew phase windows that make up this occurrence, in any order
+# + return - the reconciliation view for this occurrence
+function buildSlotReconciliation(RecurringWindow recurringWindow, MaintenanceWindow[] phasesInOccurrence) returns SlotReconciliation {
+    time:Utc earliestPhaseStart = phasesInOccurrence[0].utcStart;
+    time:Utc latestPhaseEnd = phasesInOccurrence[0].utcEnd;
+    decimal phaseDurationTotalMinutes = 0;
+    foreach MaintenanceWindow phaseWindow in phasesInOccurrence {
+        if time:utcDiffSeconds(phaseWindow.utcStart, earliestPhaseStart) < 0d {
+            earliestPhaseStart = phaseWindow.utcStart;
+        }
+        if time:utcDiffSeconds(phaseWindow.utcEnd, latestPhaseEnd) > 0d {
+            latestPhaseEnd = phaseWindow.utcEnd;
+        }
+        phaseDurationTotalMinutes += actualDurationMinutes(phaseWindow);
+    }
+    time:Seconds slotDurationSeconds = time:utcDiffSeconds(latestPhaseEnd, earliestPhaseStart);
+    decimal slotDurationMinutes = slotDurationSeconds / 60;
+    return {
+        recurringWindowId: recurringWindow.id,
+        site: recurringWindow.site,
+        title: recurringWindow.title,
+        phases: [],
+        slotDurationMinutes,
+        phaseDurationTotalMinutes,
+        reconciled: slotDurationMinutes == phaseDurationTotalMinutes
+    };
 }
