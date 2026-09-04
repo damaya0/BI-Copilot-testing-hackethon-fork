@@ -6,35 +6,28 @@ final map<MaintenanceWindow> maintenanceWindowStore = {};
 # Monotonically increasing counter used to generate unique maintenance window ids.
 int nextMaintenanceWindowId = 1;
 
-# Resolves the `time:Zone` for a given site.
-#
-# + site - the datacenter site
-# + return - the corresponding time zone, or an error if the zone cannot be resolved
-function getSiteZone(Site site) returns time:Zone|error {
-    string zoneId = siteTimeZones.get(site);
-    time:Zone? zone = time:getZone(zoneId);
-    if zone is () {
-        return error("Unable to resolve time zone for site: " + site.toString());
-    }
-    return zone;
-}
-
 # Converts a local wall-clock date and time at a given site into the corresponding UTC instant.
 #
 # + site - the datacenter site the local time belongs to
 # + localDateTime - the local wall-clock date and time
 # + return - the resolved UTC instant, or an error if the conversion fails
 function toUtc(Site site, LocalDateTime localDateTime) returns time:Utc|error {
-    time:Zone zone = check getSiteZone(site);
+    string zoneId = siteTimeZones.get(site);
+    time:Zone? zone = time:getZone(zoneId);
+    if zone is () {
+        return error("Unable to resolve time zone for site: " + site.toString());
+    }
     time:Civil civil = {
         year: localDateTime.year,
         month: localDateTime.month,
         day: localDateTime.day,
         hour: localDateTime.hour,
         minute: localDateTime.minute,
-        second: 0
+        second: 0,
+        timeAbbrev: zoneId
     };
-    return zone.utcFromCivil(civil);
+    time:Utc utc = check zone.utcFromCivil(civil);
+    return utc;
 }
 
 # Checks whether the given local start and end times are in the correct order.

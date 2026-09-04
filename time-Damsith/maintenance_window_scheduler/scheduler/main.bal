@@ -9,7 +9,7 @@ service /maintenance\-windows on maintenanceWindowListener {
     #
     # + newWindow - the maintenance window as written down by the site's operations team
     # + return - the stored maintenance window, or a bad request if the input is invalid
-    resource function post .(MaintenanceWindowInput newWindow) returns MaintenanceWindow|http:BadRequest {
+    resource function post .(MaintenanceWindowInput newWindow) returns MaintenanceWindowView|http:BadRequest {
         time:Utc|error utcStart = toUtc(newWindow.site, newWindow.localStart);
         time:Utc|error utcEnd = toUtc(newWindow.site, newWindow.localEnd);
         if utcStart is error {
@@ -26,7 +26,7 @@ service /maintenance\-windows on maintenanceWindowListener {
         string generatedId = generateMaintenanceWindowId();
         MaintenanceWindow storedWindow = toMaintenanceWindow(newWindow, generatedId, zoneId, utcStart, utcEnd);
         maintenanceWindowStore[generatedId] = storedWindow;
-        return storedWindow;
+        return toMaintenanceWindowView(storedWindow);
     }
 
     # Lists maintenance windows that fall within the given period, in chronological order,

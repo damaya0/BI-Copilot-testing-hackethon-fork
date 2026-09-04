@@ -48,6 +48,20 @@ public type MaintenanceWindow record {|
     time:Utc utcEnd;
 |};
 
+# The maintenance window representation returned to API clients, rendered in
+# the site's own local time (as customers expect to see it) alongside the
+# resolved UTC instants for systems that work off the single global timeline.
+public type MaintenanceWindowView record {|
+    string id;
+    Site site;
+    string title;
+    LocalDateTime localStart;
+    LocalDateTime localEnd;
+    string timeZone;
+    string utcStart;
+    string utcEnd;
+|};
+
 # A maintenance window enriched with chronological ordering and collision
 # information, as returned to the change calendar.
 public type ScheduledMaintenanceWindow record {|

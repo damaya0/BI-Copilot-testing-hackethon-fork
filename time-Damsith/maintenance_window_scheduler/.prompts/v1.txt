@@ -1,0 +1,3 @@
+Time:prompt-1:v1
+
+We run datacenters in Frankfurt, Sydney and São Paulo, and our infrastructure team announces maintenance windows to customers in each site's own local time, but our global change calendar and our paging system both work off a single timeline. Right now the windows live in a spreadsheet and someone converts them by hand, which has already caused two overlapping changes at the same site. I need a service that takes a maintenance window as the site's operations team would actually write it down, keeps enough information to render it back to customers the way they expect to see it, and lets the change calendar ask for everything happening in a given period in chronological order, flagging any two windows at the same site that collide.

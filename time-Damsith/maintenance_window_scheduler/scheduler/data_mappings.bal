@@ -20,6 +20,22 @@ function toMaintenanceWindow(MaintenanceWindowInput windowInput, string generate
     utcEnd: utcEnd
 };
 
+# Maps a stored maintenance window into the API response view, rendering the
+# UTC instants as RFC 3339 strings.
+#
+# + maintenanceWindow - the stored maintenance window
+# + return - the maintenance window view
+function toMaintenanceWindowView(MaintenanceWindow maintenanceWindow) returns MaintenanceWindowView => {
+    id: maintenanceWindow.id,
+    site: maintenanceWindow.site,
+    title: maintenanceWindow.title,
+    localStart: maintenanceWindow.localStart,
+    localEnd: maintenanceWindow.localEnd,
+    timeZone: maintenanceWindow.timeZone,
+    utcStart: time:utcToString(maintenanceWindow.utcStart),
+    utcEnd: time:utcToString(maintenanceWindow.utcEnd)
+};
+
 # Maps a stored maintenance window into the calendar view, enriched with collision information.
 #
 # + maintenanceWindow - the stored maintenance window
